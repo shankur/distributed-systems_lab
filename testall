@@ -1,0 +1,101 @@
+#!/bin/bash
+
+function exitfail {
+    echo "Failed $@"
+    exit 1
+}
+
+function runtest {
+    args=( "$@" )
+    echo "#######################################"
+    echo "Running ${LOSSYTEXT} ${args[@]}..."
+    ./stop.sh 2> /dev/null
+    ./start.sh ${LOSSY} > /dev/null || exitfail ./start.sh
+#    OUTPUT=`${args[@]}`
+    ${args[@]}
+    result=$?
+    echo "#######################################"
+    if [ $result -ne 0 ]
+    then
+#        echo OUTPUT
+        exitfail "${LOSSYTEXT}: ${args[@]}"
+    else
+        echo "Passed ${LOSSYTEXT}: ${args[@]}"
+    fi
+}
+
+function compile {
+	make clean && make || exitfail compile
+}
+
+function t1 { 
+    echo "#################################################################"
+	echo "# Test for lab 1 is not implemented here, continuing without... #"
+    echo "#################################################################"
+}
+
+function t2 { runtest ./test-lab-2.pl ./yfs1 ; }
+
+function t3 { runtest ./test-lab-3.pl ./yfs1 ./yfs2 ; }
+
+function t4a { runtest ./test-lab-4-a.pl ./yfs1 ; }
+function t4b { runtest ./test-lab-4-b ./yfs1 ./yfs2 ; }
+function t4c { runtest ./test-lab-4-c ./yfs1 ./yfs2 ; }
+function t4 { t4a ; t4b ; t4c ; }
+function t5 { export RPC_LOSSY=$LOSSY
+              echo lossy: ${RPC_LOSSY}
+              export RPC_COUNT=25
+              ./lock_server 3772 &
+              export RPC_COUNT=25
+              ./lock_tester 3772
+              export RPC_COUNT=0
+              export RPC_LOSSY=0
+              killall lock_server ; }
+
+function t6 { export RPC_COUNT=25
+              runtest ./test-lab-4-c ./yfs1 ./yfs2
+              grep "RPC STATS" extent_server.log
+              export RPC_COUNT=0 ; }
+
+compile
+
+RUNALL=1
+LOSSY=0
+LOSSYTEXT="non-lossy"
+
+while [ $# -gt 0 ]
+do
+    case "$1" in 
+    	lossy) LOSSY=5 ; LOSSYTEXT="lossy" ;;
+        1)  RUNALL=0; t1 ;;
+        2)  RUNALL=0; t2 ;;
+        3)  RUNALL=0; t3 ;;
+        4a) RUNALL=0; t4a ;;
+        4b) RUNALL=0; t4b ;;
+        4c) RUNALL=0; t4c ;;
+        4)  RUNALL=0; t4 ;;
+        5) RUNALL=0; t5 ;;
+        6) RUNALL=0; t6 ;;
+        *)
+            echo
+    	    echo "Usage $0 [tests to run non-lossy] [lossy [tests to run lossy]]"
+    	    echo "  all tests specified before 'lossy' will run in non-lossy mode"
+    	    echo "  all tests specified after 'lossy' will run in lossy mode"
+    	    echo "  if no test is specified, all available tests will run"
+    	    echo
+    	    echo "Example: $0 2 2 3 lossy 3 4"
+    	    echo "         will run test 2 twice and test 3 once in non-lossy mode"
+    	    echo "         and afterwards test 3 and test 4 in lossy mode"
+    	    echo
+            exitfail "unknown test: ${1}"
+    esac
+    shift	
+done
+
+if [ $RUNALL -ne 0 ]
+then
+    echo "Running all available tests..."
+	t2; t3; t4; t6
+fi
+
+./stop.sh 2>/dev/null
